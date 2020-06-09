@@ -53,14 +53,18 @@ ExternalProject_Add(htslib
     INSTALL_COMMAND ""
 )
 
-include_directories(${htslib_PREFIX}/src/htslib)
-
-
+ExternalProject_Add(bifrost
+    PREFIX ${PROJECT_SOURCE_DIR}/ext/bifrost
+    SOURCE_DIR ${PROJECT_SOURCE_DIR}/ext/bifrost
+    BUILD_IN_SOURCE 1
+    CONFIGURE_COMMAND cmake .
+    BUILD_COMMAND make
+    INSTALL_COMMAND ""
+)
 
 # add_compile_options(-Wdeprecated-register)
 
 add_subdirectory(src)
-include_directories(${EXT_PROJECTS_DIR})
 
 option(BUILD_TESTING "Build unit tests." OFF)
 include(CTest)

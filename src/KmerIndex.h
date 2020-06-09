@@ -19,6 +19,8 @@
 
 #include "hash.hpp"
 
+#include <bifrost/ColoredCDBG.hpp>
+
 std::string revcomp(const std::string s);
 
 
