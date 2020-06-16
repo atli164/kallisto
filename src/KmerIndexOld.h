@@ -13,12 +13,14 @@
 
 #include "common.h"
 #include "Kmer.hpp"
+#include "KmerIterator.hpp"
+
+#include "KmerHashTable.h"
 
 #include "hash.hpp"
 
-#include <ColoredCDBG.hpp>
-
 std::string revcomp(const std::string s);
+
 
 struct TRInfo {
   int trid;
@@ -27,7 +29,7 @@ struct TRInfo {
   bool sense; // true for sense, false for anti-sense
 };
 
-using EcMap = std::vector<std::vector<int>>;
+using EcMap = std::vector<std::vector<int>>; //std::unordered_map<int, std::vector<int>>;
 
 struct SortedVectorHasher {
   size_t operator()(const std::vector<int>& v) const {
@@ -44,15 +46,13 @@ struct SortedVectorHasher {
   }
 };
 
-class KmerEntry : public Bifrost::CCDBG_Data_t<KmerEntry> {
-public:
-  Bifrost::Kmer kmer;
+struct KmerEntry {
   int32_t contig; // id of contig
   uint32_t _pos; // 0-based forward distance to EC-junction
   int32_t contig_length;
 
-  KmerEntry() : contig(-1), _pos(0xFFFFFFF), contig_length(0), kmer(Bifrost::Kmer()) {}
-  KmerEntry(int id, int length, int pos, bool isFw, Bifrost::Kmer k) : contig(id), contig_length(length), kmer(k) {
+  KmerEntry() : contig(-1), _pos(0xFFFFFFF), contig_length(0) {}
+  KmerEntry(int id, int length, int pos, bool isFw) : contig(id), contig_length(length) {
     setPos(pos);
     setDir(isFw);
   }
@@ -84,28 +84,42 @@ struct Contig {
   std::vector<ContigToTranscript> transcripts;
 };
 
+struct DBGraph {
+  std::vector<int> ecs; // contig id -> ec-id
+  std::vector<Contig> contigs; // contig id -> contig
+//  std::vector<pair<int, bool>> edges; // contig id -> edges
+};
+
+
+
 struct KmerIndex {
-  KmerIndex(const ProgramOptions& opt) : k(opt.k), num_trans(0), skip(opt.skip), target_seqs_loaded(false) { }
+  KmerIndex(const ProgramOptions& opt) : k(opt.k), num_trans(0), skip(opt.skip), target_seqs_loaded(false) {
+    //LoadTranscripts(opt.transfasta);
+  }
 
   ~KmerIndex() {}
 
   void match(const char *s, int l, std::vector<std::pair<KmerEntry, int>>& v) const;
+//  bool matchEnd(const char *s, int l, std::vector<std::pair<int, int>>& v, int p) const;
   int mapPair(const char *s1, int l1, const char *s2, int l2, int ec) const;
   std::vector<int> intersect(int ec, const std::vector<int>& v) const;
+
+
+
 
   void BuildTranscripts(const ProgramOptions& opt);
   void BuildDeBruijnGraph(const ProgramOptions& opt, const std::vector<std::string>& seqs);
   void BuildEquivalenceClasses(const ProgramOptions& opt, const std::vector<std::string>& seqs);
   void FixSplitContigs(const ProgramOptions& opt, std::vector<std::vector<TRInfo>>& trinfos);
-  bool fwStep(Bifrost::Kmer km, Bifrost::Kmer& end) const;
+  bool fwStep(Kmer km, Kmer& end) const;
 
   // output methods
-  void write(const std::string& index_out, bool writeBifrostTable = true);
+  void write(const std::string& index_out, bool writeKmerTable = true);
   void writePseudoBamHeader(std::ostream &o) const;
   
   // note opt is not const
   // load methods
-  void load(ProgramOptions& opt, bool loadBifrostTable = true);
+  void load(ProgramOptions& opt, bool loadKmerTable = true);
   void loadTranscriptSequences() const;
   void clear();
 
@@ -117,8 +131,9 @@ struct KmerIndex {
   int num_trans; // number of targets
   int skip;
 
-  Bifrost::ColoredCDBG<KmerEntry> dbGraph;
+  KmerHashTable<KmerEntry, KmerHash> kmap;
   EcMap ecmap;
+  DBGraph dbGraph;
   std::unordered_map<std::vector<int>, int, SortedVectorHasher> ecmapinv;
   const size_t INDEX_VERSION = 10; // increase this every time you change the fileformat
 
@@ -127,6 +142,7 @@ struct KmerIndex {
   std::vector<std::string> target_names_;
   std::vector<std::string> target_seqs_; // populated on demand
   bool target_seqs_loaded;
+
 };
 
 #endif // KALLISTO_KMERINDEX_H

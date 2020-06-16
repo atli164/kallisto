@@ -5,14 +5,18 @@ list(REMOVE_ITEM sources main.cpp)
 
 include_directories(../ext/htslib)
 include_directories(../ext/bifrost)
+include_directories(../ext/bifrost/src)
 
 add_library(kallisto_core ${sources} ${headers})
 target_include_directories(kallisto_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
+message(${CMAKE_CURRENT_SOURCE_DIR} "/../ext/bifrost/src/libbifrost.a")
+
 add_executable(kallisto main.cpp)
 
 find_package( Threads REQUIRED )
-target_link_libraries(kallisto kallisto_core pthread ${CMAKE_CURRENT_SOURCE_DIR}/../ext/htslib/libhts.a ${CMAKE_CURRENT_SOURCE_DIR}/../ext/bifrost/src/libbifrost.a)
+target_link_libraries(kallisto kallisto_core pthread ${CMAKE_CURRENT_SOURCE_DIR}/../ext/htslib/libhts.a)
+target_link_libraries(kallisto_core ${CMAKE_CURRENT_SOURCE_DIR}/../ext/bifrost/src/libbifrost.a)
 
 if(LINK MATCHES static)
     set(BUILD_SHARED_LIBS OFF)
