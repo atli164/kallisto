@@ -44,17 +44,28 @@ struct SortedVectorHasher {
   }
 };
 
+struct ContigToTranscript {
+  int trid;
+  int pos; 
+  bool sense; // true for sense, 
+};
+
 class KmerEntry : public Bifrost::CCDBG_Data_t<KmerEntry> {
 public:
   Bifrost::Kmer kmer;
-  int32_t contig; // id of contig
   uint32_t _pos; // 0-based forward distance to EC-junction
-  int32_t contig_length;
+  int length; // number of k-mers in contig
+  int ec, id;
+  std::string seq; // sequence
+  std::vector<ContigToTranscript> transcripts;
 
-  KmerEntry() : contig(-1), _pos(0xFFFFFFF), contig_length(0), kmer(Bifrost::Kmer()) {}
-  KmerEntry(int id, int length, int pos, bool isFw, Bifrost::Kmer k) : contig(id), contig_length(length), kmer(k) {
+  KmerEntry() : _pos(0xFFFFFFF), length(0), kmer(Bifrost::Kmer()) {}
+  KmerEntry(int id, int len, int pos, bool isFw, Bifrost::Kmer k) : id(id), length(len), kmer(k) {
     setPos(pos);
     setDir(isFw);
+    seq = "";
+    ec = -1;
+    transcripts = std::vector<ContigToTranscript>();
   }
 
   inline int getPos() const {return (_pos & 0x0FFFFFFF);}
@@ -63,25 +74,11 @@ public:
   inline void setDir(bool _isFw) {_pos = (_pos & 0x0FFFFFFF) | ((_isFw) ? 0 : 0xF0000000);}
   inline int getDist(bool fw) const {
     if (isFw() == fw) {
-      return (contig_length - 1 - getPos());
+      return (length - 1 - getPos());
     } else {
       return getPos();
     }
   }
-};
-
-struct ContigToTranscript {
-  int trid;
-  int pos; 
-  bool sense; // true for sense, 
-};
-
-struct Contig {
-  int id; // internal id
-  int length; // number of k-mers
-  int ec;
-  std::string seq; // sequence
-  std::vector<ContigToTranscript> transcripts;
 };
 
 struct KmerIndex {
@@ -110,12 +107,13 @@ struct KmerIndex {
   void clear();
 
   // positional information
-  std::pair<int,bool> findPosition(int tr, Kmer km, KmerEntry val, int p = 0) const;
-  std::pair<int,bool> findPosition(int tr, Kmer km, int p) const;
+  std::pair<int,bool> findPosition(int tr, Bifrost::Kmer km, KmerEntry val, int p = 0) const;
+  std::pair<int,bool> findPosition(int tr, Bifrost::Kmer km, int p) const;
 
   int k; // k-mer size used
   int num_trans; // number of targets
   int skip;
+  int idcnt = 0; // used to assign incremental ids
 
   Bifrost::ColoredCDBG<KmerEntry> dbGraph;
   EcMap ecmap;
