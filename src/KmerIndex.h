@@ -51,11 +51,12 @@ struct ContigToTranscript {
 };
 
 class KmerEntry : public Bifrost::CCDBG_Data_t<KmerEntry> {
+    // no ec saved here, saved as colour data
 public:
   Bifrost::Kmer kmer;
   uint32_t _pos; // 0-based forward distance to EC-junction
   int length; // number of k-mers in contig
-  int ec, id;
+  int id; // index of trinfo data
   std::string seq; // sequence
   std::vector<ContigToTranscript> transcripts;
 
@@ -64,7 +65,6 @@ public:
     setPos(pos);
     setDir(isFw);
     seq = "";
-    ec = -1;
     transcripts = std::vector<ContigToTranscript>();
   }
 
@@ -113,7 +113,7 @@ struct KmerIndex {
   int k; // k-mer size used
   int num_trans; // number of targets
   int skip;
-  int idcnt = 0; // used to assign incremental ids
+  int idcnt = 0; // Used to assign sequential ids
 
   Bifrost::ColoredCDBG<KmerEntry> dbGraph;
   EcMap ecmap;
