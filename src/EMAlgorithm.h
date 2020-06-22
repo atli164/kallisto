@@ -29,9 +29,9 @@ struct EMAlgorithm {
               const std::vector<double>& all_means,
               const ProgramOptions& opt) :
     index_(index),
+    ecmap_(index.ecmap),
     tc_(tc),
     num_trans_(index.target_names_.size()),
-    ecmap_(index.ecmap),
     counts_(counts),
     target_names_(index.target_names_),
     post_bias_(4096,1.0),
@@ -277,9 +277,9 @@ struct EMAlgorithm {
 
 
   int num_trans_;
+  const EcMap& ecmap_;
   const KmerIndex& index_;
   const MinCollector& tc_;
-  const EcMap& ecmap_;
   const std::vector<int>& counts_;
   const std::vector<std::string>& target_names_;
   const std::vector<double>& all_fl_means;

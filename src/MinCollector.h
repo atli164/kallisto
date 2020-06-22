@@ -18,7 +18,7 @@ struct MinCollector {
   MinCollector(KmerIndex& ind, const ProgramOptions& opt)
     :
       index(ind),
-      counts(index.ecmap.size(), 0),
+      counts(index.dbGraph.size(), 0),
       flens(MAX_FRAG_LEN),
       bias3(4096),
       bias5(4096),

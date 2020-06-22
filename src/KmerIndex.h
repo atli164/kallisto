@@ -16,9 +16,11 @@
 
 #include "hash.hpp"
 
-#include <ColoredCDBG.hpp>
+#include <CompactedDBG.hpp>
 
 std::string revcomp(const std::string s);
+
+using EcMap = std::vector<std::vector<int>>;
 
 struct TRInfo {
   int trid;
@@ -26,8 +28,6 @@ struct TRInfo {
   int stop; //exclusive [start,stop)
   bool sense; // true for sense, false for anti-sense
 };
-
-using EcMap = std::vector<std::vector<int>>;
 
 struct SortedVectorHasher {
   size_t operator()(const std::vector<int>& v) const {
@@ -50,21 +50,18 @@ struct ContigToTranscript {
   bool sense; // true for sense, 
 };
 
-class KmerEntry : public Bifrost::CCDBG_Data_t<KmerEntry> {
-    // no ec saved here, saved as colour data
+class KmerEntry : public Bifrost::CDBG_Data_t<KmerEntry> {
+    // no ec saved here, saved outside
 public:
+  int id, length;
   Bifrost::Kmer kmer;
   uint32_t _pos; // 0-based forward distance to EC-junction
-  int length; // number of k-mers in contig
-  int id; // index of trinfo data
-  std::string seq; // sequence
   std::vector<ContigToTranscript> transcripts;
 
-  KmerEntry() : _pos(0xFFFFFFF), length(0), kmer(Bifrost::Kmer()) {}
-  KmerEntry(int id, int len, int pos, bool isFw, Bifrost::Kmer k) : id(id), length(len), kmer(k) {
+  KmerEntry() : _pos(0xFFFFFFF), kmer(Bifrost::Kmer()) {}
+  KmerEntry(int id, int len, int pos, bool isFw, Bifrost::Kmer k) : id(id), kmer(k), length(len) {
     setPos(pos);
     setDir(isFw);
-    seq = "";
     transcripts = std::vector<ContigToTranscript>();
   }
 
@@ -113,11 +110,11 @@ struct KmerIndex {
   int k; // k-mer size used
   int num_trans; // number of targets
   int skip;
-  int idcnt = 0; // Used to assign sequential ids
 
-  Bifrost::ColoredCDBG<KmerEntry> dbGraph;
+  Bifrost::CompactedDBG<KmerEntry> dbGraph;
   EcMap ecmap;
   std::unordered_map<std::vector<int>, int, SortedVectorHasher> ecmapinv;
+  
   const size_t INDEX_VERSION = 10; // increase this every time you change the fileformat
 
   std::vector<int> target_lens_;

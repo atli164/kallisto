@@ -11,11 +11,6 @@
 KSEQ_INIT(gzFile, gzread)
 #endif
 
-// Defining some macros for bifrost since the method signatures
-// are just comically verbose
-#define getKmerEntry(x) (x.getData()->getData(x))
-#define getColors(kv) kv.getData()->getUnitigColors(kv)
-
 // helper functions
 // pre: u is sorted
 bool isUnique(const std::vector<int>& u) {
@@ -168,14 +163,7 @@ void KmerIndex::BuildTranscripts(const ProgramOptions& opt) {
   }
   
   num_trans = seqs.size();
-  
-  // for each target, create it's own equivalence class
-  for (int i = 0; i < seqs.size(); i++ ) {
-    std::vector<int> single(1,i);
-    ecmap.push_back(single);
-    ecmapinv.insert({single,i});
-  }
-  
+
   BuildDeBruijnGraph(opt, seqs);
   BuildEquivalenceClasses(opt, seqs);
   //BuildEdges(opt);
@@ -190,92 +178,21 @@ void KmerIndex::BuildDeBruijnGraph(const ProgramOptions& opt, const std::vector<
     dbGraph.add(seq);
   }
   std::cerr << "done." << std::endl;
-  
+
   std::cerr << "[build] building target de Bruijn graph ... "; std::cerr.flush();
   // find out how much we can skip ahead for each k-mer.
-  for (auto& kv : dbGraph) {
-    if (getColors(kv)->isEmpty()) {
-      // ok we haven't processed the k-mer yet
-      std::vector<Bifrost::Kmer> flist, blist;
-
-      // iterate in forward direction
-      Bifrost::Kmer km = kv.getData()->getData(kv)->kmer;
-      Bifrost::Kmer end = km;
-      Bifrost::Kmer last = end;
-      Bifrost::Kmer twin = km.twin();
-      bool selfLoop = false;
-      flist.push_back(km);
-
-      while (fwStep(end,end)) {
-        if (end == km) {
-          // selfloop
-          selfLoop = true;
-          break;
-        } else if (end == twin) {
-          selfLoop = (flist.size() > 1); // hairpins are not loops
-          // mobius loop
-          break;
-        } else if (end == last.twin()) {
-          // hairpin
-          break;
-        }
-        flist.push_back(end);
-        last = end;
-      }
-
-      Bifrost::Kmer front = twin;
-      Bifrost::Kmer first = front;
-
-      if (!selfLoop) {
-        while (fwStep(front,front)) {
-          if (front == twin) {
-            // selfloop
-            selfLoop = true;
-            break;
-          } else if (front == km) {
-            // mobius loop
-            selfLoop = true;
-            break;
-          } else if (front == first.twin()) {
-            // hairpin
-            break;
-          }
-          blist.push_back(front);
-          first = front;
-        }
-      }
-
-      std::vector<Bifrost::Kmer> klist;
-      for (auto it = blist.rbegin(); it != blist.rend(); ++it) {
-        klist.push_back(it->twin());
-      }
-      for (auto x : flist) {
-        klist.push_back(x);
-      }
-
-      int contig_len = klist.size();
-      string contig_seq = klist[0].toString();
-      contig_seq.reserve(contig_len + k - 1);
-
-      for (int i = 0; i < klist.size(); i++) {
-        Bifrost::Kmer x = klist[i];
-        Bifrost::Kmer xr = x.rep();
-        bool forward = (x==xr);
-        auto it = dbGraph.find(xr);
-        assert(it->second.contig==-1);
-        auto ref = getKmerEntry(it);
-        *ref = KmerEntry(idcnt++, contig_len, i, forward, xr);
-        if (i > 0) {
-          contig_seq.push_back(x.toString()[k-1]);
-        }
-      }
-    }
-  }
   std::cerr << " done " << std::endl;
 }
 
 void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::vector<std::string>& seqs) {
   std::cerr << "[build] creating equivalence classes ... "; std::cerr.flush();
+
+  // for each target, create it's own equivalence class
+  for (int i = 0; i < seqs.size(); i++ ) {
+    std::vector<int> single(1,i);
+    ecmap.push_back(single);
+    ecmapinv.insert({single,i});
+  }
 
   std::vector<std::vector<TRInfo>> trinfos(dbGraph.size());
   //std::cout << "Mapping target " << std::endl;
@@ -284,13 +201,15 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::ve
     const char *s = seqs[i].c_str();
     //std::cout << "sequence number " << i << std::endl;
     Bifrost::KmerIterator kit(s), kit_end;
+    int idcnt = 0;
     for (; kit != kit_end; ++kit) {
       Bifrost::Kmer x = kit->first;
       Bifrost::Kmer xr = x.rep();
       auto search = dbGraph.find(xr);
       bool forward = (x==xr);
-      KmerEntry* val = getKmerEntry(search);
-      std::vector<TRInfo>& trinfo = trinfos[val->id];
+      KmerEntry* val = search.getData();
+      val->id = idcnt++;
+      std::vector<TRInfo>& trinfo = trinfos[idcnt];
 
       TRInfo tr;
       tr.trid = i;
@@ -298,12 +217,12 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::ve
       if (forward == val->isFw()) {
         tr.sense = true;
         tr.start = val->getPos();
-        if (val->length - tr.start > seqlen - kit->second) {
+        if (search.size - tr.start > seqlen - kit->second) {
           // tartget stops
           tr.stop = tr.start + seqlen - kit->second;
           jump = seqlen;
         } else {
-          tr.stop = val->length;
+          tr.stop = search.size;
           jump = kit->second + (tr.stop - tr.start)-1;
         }
       } else {
@@ -324,15 +243,19 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::ve
     }
   }
 
-  FixSplitContigs(opt, trinfos);
+  // Skip for now
+  // FixSplitContigs(opt, trinfos);
 
+  // Might not hold true anymore in current implementation
+  // Trying to resolve contig <-> unitig issues by just
+  // disassociating concepts fully
   // assert(trinfos.size() == dbGraph.size());
   
   // need to create the equivalence classes
 
   // for each contig
   for (auto &kv : dbGraph) {
-    int ind = getKmerEntry(kv)->id;
+    int ind = kv.getData()->id;
     std::vector<int> u;
     for (auto x : trinfos[ind]) {
       u.push_back(x.trid);
@@ -355,7 +278,7 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::ve
       ecmapinv.insert({u,ec});
       ecmap.push_back(u);
     }
-    getColors(kv)->add(kv, ec);
+    ecmap[ind].push_back(ec);
     assert(ec != -1);
     
     // correct ec of all k-mers in contig
@@ -372,22 +295,22 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::ve
       Bifrost::Kmer xr = x.rep();
       auto search = dbGraph.find(xr);
       bool forward = (x==xr);
-      auto val = getKmerEntry(search);
+      auto val = search.getData();
 
       ContigToTranscript info;
       info.trid = i;
       info.pos = kit->second;
       info.sense = (forward == val->isFw());
-      int jump = kit->second + val->length-1;
+      int jump = kit->second + search.size - 1;
       val->transcripts.push_back(info);
       if (info.sense) {
         if (info.pos == 0) {
-          stmp.append(val->seq);
+          stmp.append(search.referenceUnitigToString());
         } else {
-          stmp.append(val->seq.substr(k-1));
+          stmp.append(search.referenceUnitigToString().substr(k-1));
         }
       } else {
-        std::string r = revcomp(val->seq);
+        std::string r = revcomp(search.referenceUnitigToString());
         if (info.pos == 0) {
           stmp.append(r);
         } else {
@@ -403,12 +326,12 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::ve
 
   // double check the contigs
   for (auto &kv : dbGraph) {
-    for (auto info : getKmerEntry(kv)->transcripts) {
+    for (auto info : kv.getData()->transcripts) {
       std::string r;
       if (info.sense) {
-        r = getKmerEntry(kv)->seq;
+        r = kv.referenceUnitigToString();
       } else {
-        r = revcomp(getKmerEntry(kv)->seq);
+        r = revcomp(kv.referenceUnitigToString());
       }
       assert(r == seqs[info.trid].substr(info.pos, r.size()));
     }
@@ -419,6 +342,7 @@ void KmerIndex::BuildEquivalenceClasses(const ProgramOptions& opt, const std::ve
   std::cerr << "[build] target de Bruijn graph has " << dbGraph.size() << " contigs and contains "  << dbGraph.nbKmers() << " k-mers " << std::endl;
 }
 
+/*
 void KmerIndex::FixSplitContigs(const ProgramOptions& opt, std::vector<std::vector<TRInfo>>& trinfos) {
 
   int perftr = 0;
@@ -428,8 +352,8 @@ void KmerIndex::FixSplitContigs(const ProgramOptions& opt, std::vector<std::vect
   for(auto &kv : dbGraph) {
     bool all = true;
 
-    int ind = getKmerEntry(kv)->id;
-    int contigLen = getKmerEntry(kv)->length;
+    int ind = kv.getData()->id;
+    int contigLen = kv.getData()->length;
     //std::cout << "contig " << i << ", length = " << contigLen << ", seq = " << dbGraph.contigs[i].seq << std::endl << "tr = ";
     for (auto x : trinfos[ind]) {
       if (x.start!=0 || x.stop !=contigLen) {
@@ -463,7 +387,7 @@ void KmerIndex::FixSplitContigs(const ProgramOptions& opt, std::vector<std::vect
       assert(!brpoints.empty());
       
       // copy sequence
-      std::string seq = getKmerEntry(kv)->seq;
+      std::string seq = kv.getData()->seq;
       // copy old trinfo
       std::vector<TRInfo> oldtrinfo = trinfos[ind];
       
@@ -489,7 +413,7 @@ void KmerIndex::FixSplitContigs(const ProgramOptions& opt, std::vector<std::vect
           auto search = dbGraph.find(xr);
           assert(!search.isEmpty());
           bool forward = (x==xr);
-          *getKmerEntry(search) = KmerEntry(newc.id, newc.length,  kit->second, forward);
+          *search.getData() = KmerEntry(newc.id, newc.length,  kit->second, forward);
         }
 
         // repair tr-info
@@ -516,8 +440,10 @@ void KmerIndex::FixSplitContigs(const ProgramOptions& opt, std::vector<std::vect
   //std::cerr << "For " << dbGraph.contigs.size() << ", " << (dbGraph.contigs.size() - perftr) << " of them need to be split" << std::endl;
   
 }
+*/
 
 void KmerIndex::write(const std::string& index_out, bool writeKmerTable) {
+    /*
   std::ofstream out;
   out.open(index_out, std::ios::out | std::ios::binary);
 
@@ -628,6 +554,7 @@ void KmerIndex::write(const std::string& index_out, bool writeKmerTable) {
   
   out.flush();
   out.close();
+  */
 }
 
 bool KmerIndex::fwStep(Bifrost::Kmer km, Bifrost::Kmer& end) const {
@@ -676,7 +603,7 @@ bool KmerIndex::fwStep(Bifrost::Kmer km, Bifrost::Kmer& end) const {
 }
 
 void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable) {
-
+  /*
   std::string& index_in = opt.index;
   std::ifstream in;
 
@@ -805,7 +732,6 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable) {
     // 9.2 read in the character string
     in.read(buffer, tmp_size);
 
-    /* std::string tmp_targ_id( buffer ); */
     target_names_.push_back(std::string( buffer ));
   }
 
@@ -861,6 +787,7 @@ void KmerIndex::load(ProgramOptions& opt, bool loadKmerTable) {
   buffer=nullptr;
   
   in.close();
+  */
 }
 
 
@@ -884,7 +811,7 @@ int KmerIndex::mapPair(const char *s1, int l1, const char *s2, int l2, int ec) c
 
     if (!search.isEmpty) {
       found1 = true;
-      KmerEntry val = *getKmerEntry(search);
+      KmerEntry val = *search.getData();
       c1 = val.id;
       if (forward == val.isFw()) {
         p1 = val.getPos() - kit1->second;
@@ -912,7 +839,7 @@ int KmerIndex::mapPair(const char *s1, int l1, const char *s2, int l2, int ec) c
 
     if (!search.isEmpty) {
       found2 = true;
-      KmerEntry val = *getKmerEntry(search);
+      KmerEntry val = *search.getData();
       c2 = val.id;
       if (forward == val.isFw()) {
         p2 = val.getPos() - kit2->second;
@@ -960,13 +887,13 @@ void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int
 
     if (!search.isEmpty) {
 
-      KmerEntry val = *getKmerEntry(search);
+      KmerEntry val = *search.getData();
       
       v.push_back({val, kit->second});
 
       // see if we can skip ahead
       // bring thisback later
-      bool forward = (kit->first == getKmerEntry(search)->kmer);
+      bool forward = (kit->first == search.getData()->kmer);
       int dist = val.getDist(forward);
 
 
@@ -991,7 +918,7 @@ void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int
           if (search2.isEmpty) {
             found2 = true;
             found2pos = pos;
-          } else if (val.id == getKmerEntry(search2)->id) {
+          } else if (val.id == search2.getData()->id) {
             found2 = true;
             found2pos = pos+dist;
           }
@@ -1018,11 +945,11 @@ void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int
                 Bifrost::Kmer rep3 = kit3->first.rep();
                 auto search3 = dbGraph.find(rep3);
                 if (!search3.isEmpty) {
-                  middleContig = getKmerEntry(search3)->id;
+                  middleContig = search3.getData()->id;
                   if (middleContig == val.id) {
                     foundMiddle = true;
                     found3pos = middlePos;
-                  } else if (middleContig == getKmerEntry(search2)->id) {
+                  } else if (middleContig == search2.getData()->id) {
                     foundMiddle = true;
                     found3pos = pos+dist;
                   }
@@ -1030,7 +957,7 @@ void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int
 
 
                 if (foundMiddle) {
-                  v.push_back({*getKmerEntry(search3), found3pos});
+                  v.push_back({*search3.getData(), found3pos});
                   if (nextPos >= l-k) {
                     break;
                   } else {
@@ -1069,7 +996,7 @@ donejumping:
           auto search = dbGraph.find(rep);
           if (!search.isEmpty) {
             // if k-mer found
-            v.push_back({*getKmerEntry(search), kit->second}); // add equivalence class, and position
+            v.push_back({*search.getData(), kit->second}); // add equivalence class, and position
           }
         }
 
@@ -1085,7 +1012,7 @@ donejumping:
 std::pair<int,bool> KmerIndex::findPosition(int tr, Bifrost::Kmer km, int p) const {
   auto it = dbGraph.find(km.rep());
   if (!it.isEmpty) {
-    KmerEntry val = *getKmerEntry(it);
+    KmerEntry val = *it.getData();
     return findPosition(tr, km, val, p);
   } else {
     return {-1,true};
@@ -1174,11 +1101,11 @@ void KmerIndex::loadTranscriptSequences() const {
   }
 
 
-  
-  std::vector<std::vector<std::pair<int, ContigToTranscript>>> trans_contigs(num_trans);
+  using UnitigDat = const Bifrost::UnitigMap<KmerEntry, void, true>;
+  std::vector<std::vector<std::pair<ContigToTranscript, UnitigDat*>>> trans_contigs(num_trans);
   for (auto &kv : dbGraph) {
-    for (auto &ct : getKmerEntry(kv)->transcripts) {
-      trans_contigs[ct.trid].push_back({getKmerEntry(kv)->id, ct});
+    for (auto &ct : kv.getData()->transcripts) {
+      trans_contigs[ct.trid].push_back({ct, &kv});
     }
   }
 
@@ -1186,21 +1113,23 @@ void KmerIndex::loadTranscriptSequences() const {
   
   for (int i = 0; i < trans_contigs.size(); i++) {
     auto &v = trans_contigs[i];
-    std::sort(v.begin(), v.end(), [](std::pair<int,ContigToTranscript> a, std::pair<int,ContigToTranscript> b) {
-        return a.second.pos < b.second.pos;
+    std::sort(v.begin(), v.end(), [](
+      std::pair<ContigToTranscript,UnitigDat*> a, 
+      std::pair<ContigToTranscript,UnitigDat*> b) {
+        return a.first.pos < b.first.pos;
       });
 
     std::string seq;
     seq.reserve(target_lens_[i]);
 
     for (auto &pct : v) {
-      auto ct = pct.second;
+      auto ct = pct.first;
+      const KmerEntry* km = pct.second->getData();
       int start = (ct.pos==0) ? 0 : k-1;
-      const auto& contig = dbGraph.contigs[pct.first];
       if (ct.sense) {
-        seq.append(contig.seq.substr(start));
+        seq.append(pct.second->referenceUnitigToString().substr(start));
       } else {
-        seq.append(revcomp(contig.seq).substr(start));
+        seq.append(revcomp(pct.second->referenceUnitigToString()).substr(start));
       }
     }
     target_seqs.push_back(seq);
@@ -1233,3 +1162,4 @@ void KmerIndex::writePseudoBamHeader(std::ostream &o) const {
   o << "@PG\tID:kallisto\tPN:kallisto\tVN:"<< KALLISTO_VERSION << "\n";
   o.flush();
 }
+

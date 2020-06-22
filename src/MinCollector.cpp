@@ -149,22 +149,16 @@ std::vector<int> MinCollector::intersectECs(std::vector<std::pair<KmerEntry,int>
   if (v.empty()) {
     return {};
   }
-  sort(v.begin(), v.end(), [&](std::pair<KmerEntry, int> a, std::pair<KmerEntry, int> b)
-       {
-         if (a.first.contig==b.first.contig) {
-           return a.second < b.second;
-         } else {
-           return a.first.contig < b.first.contig;
-         }
-       }); // sort by contig, and then first position
-
+  sort(v.begin(), v.end(), [&](std::pair<KmerEntry, int> a, std::pair<KmerEntry, int> b) {
+    return std::tie(a.first.id, a.second) < std::tie(b.first.id, b.second);
+  });
 
   int ec = index.dbGraph.ecs[v[0].first.contig];
   int lastEC = ec;
   std::vector<int> u = index.ecmap[ec];
 
   for (int i = 1; i < v.size(); i++) {
-    if (v[i].first.contig != v[i-1].first.contig) {
+    if (v[i].first.id != v[i-1].first.id) {
       ec = index.dbGraph.ecs[v[i].first.contig];
       if (ec != lastEC) {
         u = index.intersect(ec, u);
@@ -390,18 +384,17 @@ bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<s
     if (s==0) {
       return -1;
     }
-    if ((csense && val.getPos() - p >= pre) || (!csense && (val.contig_length - 1 - val.getPos() - p) >= pre )) {
-      const Contig &c = index.dbGraph.contigs[val.contig];
-      bool sense = c.transcripts[0].sense;
+    if ((csense && val.getPos() - p >= pre) || (!csense && (val.contig.length - 1 - val.getPos() - p) >= pre )) {
+      bool sense = val.transcripts[0].sense;
 
       int hex = -1;
       //std::cout << "  " << s << "\n";
       if (csense) {
-        hex = hexamerToInt(c.seq.c_str() + (val.getPos()-p - pre), true);
+        hex = hexamerToInt(val.contig.seq.c_str() + (val.getPos()-p - pre), true);
         //std::cout << c.seq.substr(val.getPos()- p - pre,6) << "\n";
       } else {
         int pos = (val.getPos() + p) + k - post;
-        hex = hexamerToInt(c.seq.c_str() + (pos), false);
+        hex = hexamerToInt(val.contig.seq.c_str() + (pos), false);
         //std::cout << revcomp(c.seq.substr(pos,6)) << "\n";
       }
       return hex;
