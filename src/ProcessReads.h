@@ -36,7 +36,7 @@ class MasterProcessor;
 int64_t ProcessReads(MasterProcessor& MP, const  ProgramOptions& opt);
 int64_t ProcessBatchReads(MasterProcessor& MP, const ProgramOptions& opt);
 int64_t ProcessBUSReads(MasterProcessor& MP, const ProgramOptions& opt);
-int findFirstMappingKmer(const std::vector<std::pair<KmerEntry,int>> &v,KmerEntry &val);
+int findFirstMappingKmer(const std::vector<EcDataPair> &v,Bifrost::UnitigMap<KmerEntry,void,true> &val);
 
 class SequenceReader {
 public:

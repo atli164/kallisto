@@ -58,14 +58,14 @@ bool isSubset(const std::vector<int>& x, const std::vector<int>& y) {
 }
 
 
-int findFirstMappingKmer(const std::vector<std::pair<KmerEntry,int>> &v,KmerEntry &val) {
+int findFirstMappingKmer(const std::vector<EcDataPair> &v, KmerEntry &val) {
   int p = -1;
   if (!v.empty()) {
-    val = v[0].first;
+    val = *v[0].first.getData();
     p = v[0].second;
     for (auto &x : v) {
       if (x.second < p) {
-        val = x.first;
+        val = *x.first.getData();
         p = x.second;
       }
     }
@@ -1009,7 +1009,7 @@ void ReadProcessor::operator()() {
 
 void ReadProcessor::processBuffer() {
   // set up thread variables  
-  std::vector<std::pair<KmerEntry,int>> v1, v2;
+  std::vector<EcDataPair> v1, v2;
   std::vector<int> vtmp;
   std::vector<int> u;
 
@@ -1098,21 +1098,21 @@ void ReadProcessor::processBuffer() {
       // inspect the positions
       int fl = (int) tc.get_mean_frag_len();
       int p = -1;
-      KmerEntry val;
-      Kmer km;
+      EcDataPair val;
+      Bifrost::Kmer km;
 
       if (!v1.empty()) {
-        p = findFirstMappingKmer(v1,val);
-        km = Kmer((s1+p));
+        val.second = findFirstMappingKmer(v1, val.first);
+        km = Bifrost::Kmer(s1 + val.second);
       }
       if (!v2.empty()) {
-        p = findFirstMappingKmer(v2,val);
-        km = Kmer((s2+p));
+        val.second = findFirstMappingKmer(v2, val.first);
+        km = Bifrost::Kmer(s2 + val.second);
       }
 
       // for each transcript in the pseudoalignment
       for (auto tr : u) {
-        auto x = index.findPosition(tr, km, val, p);
+        auto x = index.findPosition(tr, km, val);
         // if the fragment is within bounds for this transcript, keep it
         if (x.second && x.first + fl <= index.target_lens_[tr]) {
           vtmp.push_back(tr);
@@ -1133,18 +1133,17 @@ void ReadProcessor::processBuffer() {
     
     if (mp.opt.strand_specific && !u.empty()) {
       int p = -1;
-      Kmer km;
+      Bifrost::Kmer km;
       KmerEntry val;
       if (!v1.empty()) {
         vtmp.clear();
         bool firstStrand = (mp.opt.strand == ProgramOptions::StrandType::FR); // FR have first read mapping forward
         p = findFirstMappingKmer(v1,val);
-        km = Kmer((s1+p));
+        km = Bifrost::Kmer((s1+p));
         bool strand = (val.isFw() == (km == km.rep())); // k-mer maps to fw strand?
         // might need to optimize this
-        const auto &c = index.dbGraph.contigs[val.contig];
         for (auto tr : u) {
-          for (auto ctx : c.transcripts) {
+          for (auto ctx : val.transcripts) {
             if (tr == ctx.trid) {
               if ((strand == ctx.sense) == firstStrand) {
                 // swap out 
@@ -1163,12 +1162,11 @@ void ReadProcessor::processBuffer() {
         vtmp.clear();
         bool secondStrand = (mp.opt.strand == ProgramOptions::StrandType::RF);
         p = findFirstMappingKmer(v2,val);
-        km = Kmer((s2+p));
+        km = Bifrost::Kmer((s2+p));
         bool strand = (val.isFw() == (km == km.rep())); // k-mer maps to fw strand?
         // might need to optimize this
-        const auto &c = index.dbGraph.contigs[val.contig];
         for (auto tr : u) {
-          for (auto ctx : c.transcripts) {
+          for (auto ctx : val.transcripts) {
             if (tr == ctx.trid) {
               if ((strand == ctx.sense) == secondStrand) {
                 // swap out 
@@ -1371,7 +1369,7 @@ void BUSProcessor::operator()() {
 
 void BUSProcessor::processBuffer() {
   // set up thread variables  
-  std::vector<std::pair<KmerEntry,int>> v,v2;
+  std::vector<EcDataPair> v,v2;
   std::vector<int> vtmp;
   std::vector<int> u;
   
@@ -1706,8 +1704,8 @@ void AlnProcessor::processBufferTrans() {
   }
   
 
-  Kmer km1,km2;
-  KmerEntry val1, val2;
+  Bifrost::Kmer km1,km2;
+  EcDataPair val1, val2;
 
   for (int i = 0; i < n; i++) {
     bam1_t b1,b2, b1c, b2c;
@@ -1875,22 +1873,22 @@ void AlnProcessor::processBufferTrans() {
           }
         }
 
-        auto strandednessInfo = [&](Kmer km, KmerEntry& val, const std::vector<std::pair<int,double>> &ua) -> std::pair<bool,bool> {
+        auto strandednessInfo = [&](Bifrost::Kmer km, EcDataPair &dat, const std::vector<std::pair<int,double>> &ua) -> std::pair<bool,bool> {
+          KmerEntry val;
           bool reptrue = (km == km.rep());
-          auto search = index.kmap.find(km.rep());
-          if (search == index.kmap.end()) {
+          auto search = index.dbGraph.find(km.rep());
+          if (search.isEmpty) {
             return {false,reptrue};
           } else {
-            val = search->second;
-            if (val.contig == -1) {
+            val = *search.getData();
+            if (val.id == -1) {
               return {false,reptrue};
             } else {
-              const Contig &c = index.dbGraph.contigs[val.contig];
-              if (c.transcripts.empty()) {
+              if (val.transcripts.empty()) {
                 return {false,reptrue};
               }
-              bool trsense = c.transcripts[0].sense;
-              for (const auto & x : c.transcripts) {
+              bool trsense = val.transcripts[0].sense;
+              for (const auto & x : val.transcripts) {
                 if (x.sense != trsense) {
                   for (const auto &y : ua) {
                     if (y.first == x.trid) {
@@ -1906,12 +1904,12 @@ void AlnProcessor::processBufferTrans() {
         std::pair<bool,bool> strInfo1 = {true,true}, strInfo2 = {true,true};
         
         if (!pi.r1empty) {
-          km1 = Kmer(seqs[si1].first + pi.k1pos);
+          km1 = Bifrost::Kmer(seqs[si1].first + pi.k1pos);
           strInfo1 = strandednessInfo(km1, val1, ua);
 
         }
         if (paired && !pi.r2empty) {
-          km2 = Kmer(seqs[si2].first + pi.k2pos);
+          km2 = Bifrost::Kmer(seqs[si2].first + pi.k2pos);
           strInfo2 = strandednessInfo(km2, val2, ua);
         }
         
@@ -1936,7 +1934,8 @@ void AlnProcessor::processBufferTrans() {
           std::pair<int,bool> pos1, pos2;
           
           if (!pi.r1empty) {
-            pos1 = index.findPosition(t, km1, val1, pi.k1pos);
+            val1.second = pi.k1pos;
+            pos1 = index.findPosition(t, km1, val1);
           } else {
             pos1 = {std::numeric_limits<int>::min(), true};
           }
@@ -1944,7 +1943,8 @@ void AlnProcessor::processBufferTrans() {
 
           if (paired) {
             if (!pi.r2empty) {
-              pos2 = index.findPosition(t, km2, val2, pi.k2pos);
+              val2.second = pi.k2pos;
+              pos2 = index.findPosition(t, km2, val2);
             } else {
               pos2 = {std::numeric_limits<int>::min(), true}; // use true so we don't reverse complement it
             }
@@ -2125,7 +2125,7 @@ void AlnProcessor::processBufferGenome() {
   std::string bc, umi;
   
 
-  Kmer km1,km2;
+  Bifrost::Kmer km1,km2;
   KmerEntry val1, val2;
   if  (mp.opt.bus_mode) {
     paired = false;
@@ -2303,13 +2303,13 @@ void AlnProcessor::processBufferGenome() {
 
 
         // everything maps to the same strand on all transcriptomes
-        auto strandednessInfo = [&](Kmer km, KmerEntry& val, const std::vector<std::pair<int,double>> &ua) -> std::pair<bool,bool> {          
+        auto strandednessInfo = [&](Bifrost::Kmer km, KmerEntry& val, const std::vector<std::pair<int,double>> &ua) -> std::pair<bool,bool> {          
           bool reptrue = (km == km.rep());
-          auto search = index.kmap.find(km.rep());
-          if (search == index.kmap.end()) {
+          auto search = index.dbGraph.find(km.rep());
+          if (search.isEmpty) {
             return {false,reptrue};
           } else {
-            val = search->second;
+            val = *search.getData();
             if (val.contig == -1) {
               return {false,reptrue};
             } else {
@@ -2334,11 +2334,11 @@ void AlnProcessor::processBufferGenome() {
         std::pair<bool,bool> strInfo1 = {true,true}, strInfo2 = {true,true};
         
         if (!pi.r1empty) {
-          km1 = Kmer(seqs[si1].first + pi.k1pos);
+          km1 = Bifrost::Kmer(seqs[si1].first + pi.k1pos);
           strInfo1 = strandednessInfo(km1, val1, ua);
         }
         if (paired && !pi.r2empty) {
-          km2 = Kmer(seqs[si2].first + pi.k2pos);
+          km2 = Bifrost::Kmer(seqs[si2].first + pi.k2pos);
           strInfo2 = strandednessInfo(km2, val2, ua);
         }
         

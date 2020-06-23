@@ -876,7 +876,7 @@ int KmerIndex::mapPair(const char *s1, int l1, const char *s2, int l2, int ec) c
 // use:  match(s,l,v)
 // pre:  v is initialized
 // post: v contains all equiv classes for the k-mers in s
-void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int>>& v) const {
+void KmerIndex::match(const char *s, int l, std::vector<EcDataPair>& v) const {
   Bifrost::KmerIterator kit(s), kit_end;
   bool backOff = false;
   int nextPos = 0; // nextPosition to check
@@ -889,7 +889,7 @@ void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int
 
       KmerEntry val = *search.getData();
       
-      v.push_back({val, kit->second});
+      v.push_back({search, kit->second});
 
       // see if we can skip ahead
       // bring thisback later
@@ -925,10 +925,10 @@ void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int
           if (found2) {
             // great, a match (or nothing) see if we can move the k-mer forward
             if (found2pos >= l-k) {
-              v.push_back({val, l-k}); // push back a fake position
+              v.push_back({search, l-k}); // push back a fake position
               break; //
             } else {
-              v.push_back({val, found2pos});
+              v.push_back({search, found2pos});
               kit = kit2; // move iterator to this new position
             }
           } else {
@@ -957,7 +957,7 @@ void KmerIndex::match(const char *s, int l, std::vector<std::pair<KmerEntry, int
 
 
                 if (foundMiddle) {
-                  v.push_back({*search3.getData(), found3pos});
+                  v.push_back({search3, found3pos});
                   if (nextPos >= l-k) {
                     break;
                   } else {
@@ -996,7 +996,7 @@ donejumping:
           auto search = dbGraph.find(rep);
           if (!search.isEmpty) {
             // if k-mer found
-            v.push_back({*search.getData(), kit->second}); // add equivalence class, and position
+            v.push_back({search, kit->second}); // add equivalence class, and position
           }
         }
 
@@ -1012,8 +1012,8 @@ donejumping:
 std::pair<int,bool> KmerIndex::findPosition(int tr, Bifrost::Kmer km, int p) const {
   auto it = dbGraph.find(km.rep());
   if (!it.isEmpty) {
-    KmerEntry val = *it.getData();
-    return findPosition(tr, km, val, p);
+    EcDataPair tmp = {it, p};
+    return findPosition(tr, km, tmp);
   } else {
     return {-1,true};
   }
@@ -1024,16 +1024,18 @@ std::pair<int,bool> KmerIndex::findPosition(int tr, Bifrost::Kmer km, int p) con
 //      km is the p-th k-mer of a read
 //      val.contig maps to tr
 //post: km is found in position pos (1-based) on the sense/!sense strand of tr
-std::pair<int,bool> KmerIndex::findPosition(int tr, Bifrost::Kmer km, KmerEntry val, int p) const {
+std::pair<int,bool> KmerIndex::findPosition(int tr, Bifrost::Kmer km, EcDataPair dat) const {
+  int p = dat.second;
+  const KmerEntry* val = dat.first.getData();
   bool fw = (km == km.rep());
-  bool csense = (fw == val.isFw());
+  bool csense = (fw == val->isFw());
 
   int trpos = -1;
   bool trsense = true;
-  if (val.id < 0) {
+  if (val->id < 0) {
     return {-1, true};
   }
-  for (auto x : val.transcripts) {
+  for (auto x : val->transcripts) {
     if (x.trid == tr) {
       trpos = x.pos;
       trsense = x.sense;
@@ -1048,15 +1050,15 @@ std::pair<int,bool> KmerIndex::findPosition(int tr, Bifrost::Kmer km, KmerEntry 
 
   if (trsense) {
     if (csense) {
-      return {trpos + val.getPos() - p + 1, csense}; // 1-based, case I
+      return {trpos + val->getPos() - p + 1, csense}; // 1-based, case I
     } else {
-      return {trpos + val.getPos() + k + p, csense}; // 1-based, case III
+      return {trpos + val->getPos() + k + p, csense}; // 1-based, case III
     }
   } else {
     if (csense) {
-      return {trpos + (val.length - val.getPos() -1) + k + p, !csense};  // 1-based, case IV
+      return {trpos + (val->length - val->getPos() -1) + k + p, !csense};  // 1-based, case IV
     } else {
-      return {trpos + (val.length - val.getPos())  - p, !csense}; // 1-based, case II
+      return {trpos + (val->length - val->getPos())  - p, !csense}; // 1-based, case II
     }
   }
 }

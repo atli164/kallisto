@@ -7,6 +7,7 @@
 #include <sstream>
 #include <vector>
 #include <unordered_map>
+#include <CompactedDBG.hpp>
 
 #include "KmerIndex.h"
 #include "weights.h"
@@ -36,21 +37,21 @@ struct MinCollector {
          }
        }
 
-  int collect(std::vector<std::pair<KmerEntry,int>>& v1,
-              std::vector<std::pair<KmerEntry,int>>& v2,
+  int collect(std::vector<EcDataPair>& v1,
+              std::vector<EcDataPair>& v2,
               bool nonpaired=false);
 
-  int collect(std::vector<std::pair<KmerEntry,int>>& v1) {
-    std::vector<std::pair<KmerEntry,int>> dummy;
+  int collect(std::vector<EcDataPair>& v1) {
+    std::vector<EcDataPair> dummy;
     return collect(v1,dummy,true);
 
   }
   int increaseCount(const std::vector<int>& u);
   int decreaseCount(const int ec);
 
-  std::vector<int> intersectECs(std::vector<std::pair<KmerEntry,int>>& v) const;
-  int intersectKmers(std::vector<std::pair<KmerEntry,int>>& v1,
-                    std::vector<std::pair<KmerEntry,int>>& v2, bool nonpaired, std::vector<int> &u) const;
+  std::vector<int> intersectECs(std::vector<EcDataPair>& v) const;
+  int intersectKmers(std::vector<EcDataPair>& v1,
+                    std::vector<EcDataPair>& v2, bool nonpaired, std::vector<int> &u) const;
   int findEC(const std::vector<int>& u) const;
 
 
@@ -65,8 +66,8 @@ struct MinCollector {
   void loadCounts(ProgramOptions& opt);
 
 
-  bool countBias(const char *s1, const char *s2, const std::vector<std::pair<KmerEntry,int>> v1, const std::vector<std::pair<KmerEntry,int>> v2, bool paired);
-  bool countBias(const char *s1, const char *s2, const std::vector<std::pair<KmerEntry,int>> v1, const std::vector<std::pair<KmerEntry,int>> v2, bool paired, std::vector<int>& biasOut) const;
+  bool countBias(const char *s1, const char *s2, const std::vector<EcDataPair> v1, const std::vector<EcDataPair> v2, bool paired);
+  bool countBias(const char *s1, const char *s2, const std::vector<EcDataPair> v1, const std::vector<EcDataPair> v2, bool paired, std::vector<int>& biasOut) const;
 
   // DEPRECATED
   double get_mean_frag_len(bool lenient = false) const;

@@ -33,8 +33,8 @@ void MinCollector::init_mean_fl_trunc(double mean, double sd) {
   has_mean_fl_trunc = true;
 }
 
-int MinCollector::intersectKmers(std::vector<std::pair<KmerEntry,int>>& v1,
-                          std::vector<std::pair<KmerEntry,int>>& v2, bool nonpaired, std::vector<int> &u) const {
+int MinCollector::intersectKmers(std::vector<EcDataPair>& v1,
+                          std::vector<EcDataPair>& v2, bool nonpaired, std::vector<int> &u) const {
   std::vector<int> u1 = intersectECs(v1);
   std::vector<int> u2 = intersectECs(v2);
 
@@ -65,8 +65,8 @@ int MinCollector::intersectKmers(std::vector<std::pair<KmerEntry,int>>& v1,
   return 1;
 }
 
-int MinCollector::collect(std::vector<std::pair<KmerEntry,int>>& v1,
-                          std::vector<std::pair<KmerEntry,int>>& v2, bool nonpaired) {
+int MinCollector::collect(std::vector<EcDataPair>& v1,
+                          std::vector<EcDataPair>& v2, bool nonpaired) {
   std::vector<int> u;
   int r = intersectKmers(v1, v2, nonpaired, u);
   if (r != -1) {
@@ -140,26 +140,26 @@ int MinCollector::decreaseCount(const int ec) {
 }
 
 struct ComparePairsBySecond {
-  bool operator()(std::pair<KmerEntry,int> a, std::pair<KmerEntry,int> b) {
+  bool operator()(EcDataPair a, EcDataPair b) {
     return a.second < b.second;
   }
 };
 
-std::vector<int> MinCollector::intersectECs(std::vector<std::pair<KmerEntry,int>>& v) const {
+std::vector<int> MinCollector::intersectECs(std::vector<EcDataPair>& v) const {
   if (v.empty()) {
     return {};
   }
-  sort(v.begin(), v.end(), [&](std::pair<KmerEntry, int> a, std::pair<KmerEntry, int> b) {
-    return std::tie(a.first.id, a.second) < std::tie(b.first.id, b.second);
+  sort(v.begin(), v.end(), [&](EcDataPair a, EcDataPair b) {
+    return std::tie(a.first.getData()->id, a.second) < std::tie(b.first.getData()->id, b.second);
   });
 
-  int ec = index.dbGraph.ecs[v[0].first.contig];
+  int ec = v[0].first.getData()->id;
   int lastEC = ec;
   std::vector<int> u = index.ecmap[ec];
 
   for (int i = 1; i < v.size(); i++) {
-    if (v[i].first.id != v[i-1].first.id) {
-      ec = index.dbGraph.ecs[v[i].first.contig];
+    if (v[i].first.getData()->id != v[i-1].first.getData()->id) {
+      ec = v[i].first.getData()->id;
       if (ec != lastEC) {
         u = index.intersect(ec, u);
         lastEC = ec;
@@ -366,11 +366,11 @@ int hexamerToInt(const char *s, bool revcomp) {
   return hex;
 }
 
-bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<std::pair<KmerEntry,int>> v1, const std::vector<std::pair<KmerEntry,int>> v2, bool paired) {
+bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<EcDataPair> v1, const std::vector<EcDataPair> v2, bool paired) {
   return countBias(s1,s2,v1,v2,paired,bias5);
 }
 
-bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<std::pair<KmerEntry,int>> v1, const std::vector<std::pair<KmerEntry,int>> v2, bool paired, std::vector<int>& biasOut) const {
+bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<EcDataPair> v1, const std::vector<EcDataPair> v2, bool paired, std::vector<int>& biasOut) const {
 
   const int pre = 2, post = 4;
 
@@ -380,21 +380,22 @@ bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<s
 
   
 
-  auto getPreSeq = [&](const char *s, Kmer km, bool fw, bool csense,  KmerEntry val, int p) -> int {
+  auto getPreSeq = [&](const char *s, Kmer km, bool fw, bool csense, EcDataPair dat) -> int {
+    const KmerEntry* val = dat.first.getData();
     if (s==0) {
       return -1;
     }
-    if ((csense && val.getPos() - p >= pre) || (!csense && (val.contig.length - 1 - val.getPos() - p) >= pre )) {
-      bool sense = val.transcripts[0].sense;
+    if ((csense && val->getPos() - dat.second >= pre) || (!csense && (val->length - 1 - val->getPos() - dat.second) >= pre )) {
+      bool sense = val->transcripts[0].sense;
 
       int hex = -1;
       //std::cout << "  " << s << "\n";
       if (csense) {
-        hex = hexamerToInt(val.contig.seq.c_str() + (val.getPos()-p - pre), true);
+        hex = hexamerToInt(dat.first.referenceUnitigToString().c_str() + (val->getPos() - dat.second - pre), true);
         //std::cout << c.seq.substr(val.getPos()- p - pre,6) << "\n";
       } else {
-        int pos = (val.getPos() + p) + k - post;
-        hex = hexamerToInt(val.contig.seq.c_str() + (pos), false);
+        int pos = (val->getPos() + dat.second) + k - post;
+        hex = hexamerToInt(dat.first.referenceUnitigToString().c_str() + (pos), false);
         //std::cout << revcomp(c.seq.substr(pos,6)) << "\n";
       }
       return hex;
@@ -404,20 +405,20 @@ bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<s
   };
 
   // find first contig of read
-  KmerEntry val1 = v1[0].first;
+  EcDataPair val1 = v1[0];
   int p1 = v1[0].second;
   for (auto &x : v1) {
     if (x.second < p1) {
-      val1 = x.first;
+      val1 = x;
       p1 = x.second;
     }
   }
 
   Kmer km1 = Kmer((s1+p1));
   bool fw1 = (km1==km1.rep());
-  bool csense1 = (fw1 == val1.isFw()); // is this in the direction of the contig?
+  bool csense1 = (fw1 == val1.first.getData()->isFw()); // is this in the direction of the contig?
 
-  int hex5 = getPreSeq(s1, km1, fw1, csense1, val1, p1);
+  int hex5 = getPreSeq(s1, km1, fw1, csense1, val1);
 
   /*
   int hex3 = -1;

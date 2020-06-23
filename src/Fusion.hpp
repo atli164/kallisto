@@ -27,16 +27,15 @@ is either FW or RE depending on whether the read aligns to the forward or revers
 **/
 
 void printTranscripts(const KmerIndex& index, std::stringstream& o, const std::string s,
-  const std::vector<std::pair<KmerEntry,int>>& v, const std::vector<int> u) {
+  const std::vector<EcDataPair>& v, const std::vector<int> u) {
 
-  Kmer km;
-  KmerEntry val;
-  int p;
+  Bifrost::Kmer km;
+  EcDataPair val;
 
   // find first mapping k-mer
   if (!v.empty()) {
-    p = findFirstMappingKmer(v,val);
-    km = Kmer((s.c_str()+p));
+    val.second = findFirstMappingKmer(v, val.first);
+    km = Bifrost::Kmer(s.c_str() + val.second);
   }
   
 
@@ -45,7 +44,7 @@ void printTranscripts(const KmerIndex& index, std::stringstream& o, const std::s
     if (i > 0) {
       o << ";";
     }
-    std::pair<int, bool> xp = index.findPosition(tr, km, val, p);
+    std::pair<int, bool> xp = index.findPosition(tr, km, val);
     o << "(" << index.target_names_[tr] << "," << xp.first << ",";
     if (xp.second) {
       o << "FW)";
@@ -55,17 +54,17 @@ void printTranscripts(const KmerIndex& index, std::stringstream& o, const std::s
   }
 }
 
-std::vector<int> simpleIntersect(const KmerIndex& index, const std::vector<std::pair<KmerEntry,int>>& v) {
+std::vector<int> simpleIntersect(const KmerIndex& index, const std::vector<EcDataPair>& v) {
   if (v.empty()) {
     return {};
   }
-  int ec = index.dbGraph.ecs[v[0].first.contig];
+  int ec = v[0].first.getData()->id;
   int lastEC = ec;
   std::vector<int> u = index.ecmap[ec];
 
   for (int i = 1; i < v.size(); i++) {
-    if (v[i].first.contig != v[i-1].first.contig) {
-      ec = index.dbGraph.ecs[v[i].first.contig];
+    if (v[i].first.getData()->id != v[i-1].first.getData()->id) {
+      ec = v[i].first.getData()->id;
       if (ec != lastEC) {
         u = index.intersect(ec, u);
         lastEC = ec;
@@ -79,17 +78,16 @@ std::vector<int> simpleIntersect(const KmerIndex& index, const std::vector<std::
 }
 
 
-bool checkMapability(const KmerIndex& index, const std::string &s, const std::vector<std::pair<KmerEntry,int>>& v, std::vector<int> &u) {
+bool checkMapability(const KmerIndex& index, const std::string &s, const std::vector<EcDataPair>& v, std::vector<int> &u) {
   const int maxMismatch = 2;
   const int maxSoftclip = 5;
     
-  Kmer km;
-  KmerEntry val;
-  int p;
+  Bifrost::Kmer km;
+  EcDataPair val;
 
   if (!v.empty()) {
-    p = findFirstMappingKmer(v,val);
-    km = Kmer(s.c_str()+p);
+    val.second = findFirstMappingKmer(v,val.first);
+    km = Bifrost::Kmer(s.c_str() + val.second);
   } else {
     return false;
   }
@@ -97,7 +95,7 @@ bool checkMapability(const KmerIndex& index, const std::string &s, const std::ve
   std::vector<int> vtmp; vtmp.reserve(u.size());
   
   for (auto tr : u) {
-    auto trpos = index.findPosition(tr, km, val, p);
+    auto trpos = index.findPosition(tr, km, val);
     int tpos = (int)trpos.first;
     int sz = (int)s.size();
     bool add = true; 
@@ -167,11 +165,11 @@ bool checkUnionIntersection(const KmerIndex& index, const std::string &s1, const
     p = {-1,-1};
     std::set<int> su;
     
-    KmerIterator kit(s.c_str()), kit_end;
+    Bifrost::KmerIterator kit(s.c_str()), kit_end;
     int lastEC = -1;
     for (int i = 0; kit != kit_end; ++i,++kit) {
-      auto search = index.kmap.find(kit->first.rep());
-      if (search != index.kmap.end()) {
+      auto search = index.dbGraph.find(kit->first.rep());
+      if (!search.isEmpty) {
         if (p.first == -1) {
           p.first = kit->second;
           p.second = p.first +1;
@@ -180,8 +178,8 @@ bool checkUnionIntersection(const KmerIndex& index, const std::string &s1, const
             p.second++;
           }
         }
-        const KmerEntry &val = search->second;
-        int ec = index.dbGraph.ecs[val.contig];
+        const KmerEntry* val = search.getData();
+        int ec = val->id;
         if (ec != -1 && ec != lastEC) {
           su.insert(index.ecmap[ec].begin(), index.ecmap[ec].end());
           lastEC = ec;
@@ -228,8 +226,8 @@ bool checkUnionIntersection(const KmerIndex& index, const std::string &s1, const
 
 void searchFusion(const KmerIndex &index, const ProgramOptions& opt,
   const MinCollector& tc, MasterProcessor& mp, int ec,
-  const std::string &n1, const std::string &s1, std::vector<std::pair<KmerEntry,int>> &v1,
-  const std::string &n2, const std::string &s2, std::vector<std::pair<KmerEntry,int>> &v2, bool paired) {
+  const std::string &n1, const std::string &s1, std::vector<EcDataPair> &v1,
+  const std::string &n2, const std::string &s2, std::vector<EcDataPair> &v2, bool paired) {
 
   bool partialMap = false;
   if (ec != -1) {
@@ -279,9 +277,9 @@ void searchFusion(const KmerIndex &index, const ProgramOptions& opt,
 
   // ok so ec == -1 and not both v1 and v2 are empty
   // exactly one of u1 and u2 are empty
-  std::vector<std::pair<KmerEntry,int>> vsafe, vsplit;
+  std::vector<EcDataPair> vsafe, vsplit;
   // sort v1 and v2 by read position
-  auto vsorter =  [&](std::pair<KmerEntry, int> a, std::pair<KmerEntry, int> b) {
+  auto vsorter =  [&](EcDataPair a, EcDataPair b) {
     return a.second < b.second;
   };
 

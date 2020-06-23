@@ -78,12 +78,14 @@ public:
   }
 };
 
+using EcDataPair = std::pair<Bifrost::UnitigMap<KmerEntry,void,true>,int>;
+
 struct KmerIndex {
   KmerIndex(const ProgramOptions& opt) : k(opt.k), num_trans(0), skip(opt.skip), target_seqs_loaded(false) { }
 
   ~KmerIndex() {}
 
-  void match(const char *s, int l, std::vector<std::pair<KmerEntry, int>>& v) const;
+  void match(const char *s, int l, std::vector<EcDataPair>& v) const;
   int mapPair(const char *s1, int l1, const char *s2, int l2, int ec) const;
   std::vector<int> intersect(int ec, const std::vector<int>& v) const;
 
@@ -104,7 +106,7 @@ struct KmerIndex {
   void clear();
 
   // positional information
-  std::pair<int,bool> findPosition(int tr, Bifrost::Kmer km, KmerEntry val, int p = 0) const;
+  std::pair<int,bool> findPosition(int tr, Bifrost::Kmer km, EcDataPair val) const;
   std::pair<int,bool> findPosition(int tr, Bifrost::Kmer km, int p) const;
 
   int k; // k-mer size used
