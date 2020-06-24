@@ -55,8 +55,8 @@ void createBamRecord(const KmerIndex, const KmerIndex &index, const std::vector<
 
 
 void outputPseudoBam(const KmerIndex &index, const std::vector<int> &u,
-    const char *s1, const char *n1, const char *q1, int slen1, int nlen1, const std::vector<std::pair<KmerEntry,int>>& v1,
-    const char *s2, const char *n2, const char *q2, int slen2, int nlen2, const std::vector<std::pair<KmerEntry,int>>& v2,
+    const char *s1, const char *n1, const char *q1, int slen1, int nlen1, const std::vector<EcDataPair>& v1,
+    const char *s2, const char *n2, const char *q2, int slen2, int nlen2, const std::vector<EcDataPair>& v2,
     bool paired, bam_hdr_t *h, samFile *fp) {
 
   static char buf1[32768];
@@ -152,33 +152,28 @@ void outputPseudoBam(const KmerIndex &index, const std::vector<int> &u,
       }
 
 
-      int p1 = -1, p2 = -1;
-      KmerEntry val1, val2;
+      EcDataPair val1, val2;
       int nmap = u.size();//index.ecmap[ec].size();
-      Kmer km1, km2;
+      Bifrost::Kmer km1, km2;
 
       if (!v1.empty()) {
-        val1 = v1[0].first;
-        p1 = v1[0].second;
+        val1 = v1[0];
         for (auto &x : v1) {
-          if (x.second < p1) {
-            val1 = x.first;
-            p1 = x.second;
+          if (x.second < val1.second) {
+            val1 = x;
           }
         }
-        km1 = Kmer((s1+p1));
+        km1 = Bifrost::Kmer(s1 + val1.second);
       }
 
       if (!v2.empty()) {
-        val2 = v2[0].first;
-        p2 = v2[0].second;
+        val2 = v2[0];
         for (auto &x : v2) {
-          if (x.second < p2) {
-            val2 = x.first;
-            p2 = x.second;
+          if (x.second < val2.second) {
+            val2 = x;
           }
         }
-        km2 = Kmer((s2+p2));
+        km2 = Bifrost::Kmer(s2 + val2.second);
       }
 
       bool revset = false;
@@ -190,9 +185,9 @@ void outputPseudoBam(const KmerIndex &index, const std::vector<int> &u,
         int f1 = flag1;
         std::pair<int, bool> x1 {-1,true};
         std::pair<int, bool> x2 {-1,true};
-        if (p1 != -1) {
-          x1 = index.findPosition(tr, km1, val1, p1);
-          if (p2 == -1) {
+        if (val1.second != -1) {
+          x1 = index.findPosition(tr, km1, val1);
+          if (val2.second == -1) {
             x2 = {x1.first,!x1.second};
           }
           if (!x1.second) {
@@ -206,9 +201,9 @@ void outputPseudoBam(const KmerIndex &index, const std::vector<int> &u,
         if (!firstTr) {
           f1 += 0x100; // secondary alignment
         }
-        if (p2 != -1) {
-          x2 = index.findPosition(tr, km2 , val2, p2);
-          if (p1 == -1) {
+        if (val2.second != -1) {
+          x2 = index.findPosition(tr, km2 , val2);
+          if (val1.second == -1) {
             x1 = {x2.first, !x2.second};
           }
           if (!x2.second) {
@@ -245,21 +240,21 @@ void outputPseudoBam(const KmerIndex &index, const std::vector<int> &u,
         int f2 = flag2;
         std::pair<int, bool> x1 {-1,true};
         std::pair<int, bool> x2 {-1,true};
-        if (p1 != -1) {
-          x1 = index.findPosition(tr, km1, val1, p1);
-          if (p2 == -1) {
+        if (val1.second != -1) {
+          x1 = index.findPosition(tr, km1, val1);
+          if (val2.second == -1) {
             x2 = {x1.first,!x1.second};
           }
           if (!x1.second) {
             f2 += 0x20; // mate reverse
           }
         }
-        if (p2 != -1) {
-          x2 = index.findPosition(tr, km2, val2, p2);
-          if (p1 == -1) {
+        if (val2.second != -1) {
+          x2 = index.findPosition(tr, km2, val2);
+          if (val1.second == -1) {
             x1 = {x2.first, !x2.second};
           }
-          if (!x2.second) {
+          if (!val2.second) {
             f2 += 0x10; // read reverse
             if (!revset) {
               revseq(&buf1[0], &buf2[0], s2, q2, slen2);
@@ -298,21 +293,19 @@ void outputPseudoBam(const KmerIndex &index, const std::vector<int> &u,
     } else {
       // single end
       int nmap = (int) u.size();
-      KmerEntry val1 = v1[0].first;
-      int p1 = v1[0].second;
+      EcDataPair val1 = v1[0];
       for (auto &x : v1) {
-        if (x.second < p1) {
-          val1 = x.first;
-          p1 = x.second;
+        if (x.second < val1.second) {
+          val1 = x;
         }
       }
-      Kmer km1 = Kmer((s1+p1));
+      Bifrost::Kmer km1 = Bifrost::Kmer(s1 + val1.second);
 
       bool revset = false;
       bool firstTr = true;
       for (auto tr : u) {
         int f1 = 0;
-        auto x1 = index.findPosition(tr, km1, val1, p1);
+        auto x1 = index.findPosition(tr, km1, val1);
 
         if (!x1.second) {
           f1 += 0x10;

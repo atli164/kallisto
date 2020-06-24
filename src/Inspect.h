@@ -18,6 +18,17 @@ struct ECStruct {
   std::vector<int> tlist;
 };
 
+template<typename T>
+std::string vec_to_string(std::vector<T> v) {
+    std::string res = "{";
+    for(int i = 0; i < v.size(); ++i) {
+        res += std::to_string(v[i]);
+        if(i != v.size() -1) res += ", ";
+    }
+    res += "}";
+    return res;
+}
+
 std::vector<ECStruct> merge_contigs(std::vector<ECStruct> ecv) {
   if (ecv.size() <= 1) {
     return (ecv);
@@ -137,13 +148,13 @@ void InspectIndex(const KmerIndex& index, const ProgramOptions& opt) {
     exit(1);
   }
 
-  if (index.dbGraph.ecs.size() != index.dbGraph.contigs.size()) {
+  /*if (index.dbGraph.ecs.size() != index.dbGraph.contigs.size()) {
     cout << "Error: sizes do not match. ecs.size = " << index.dbGraph.ecs.size()
          << ", contigs.size = " << index.dbGraph.contigs.size() << endl;
     exit(1);
-  }
+  }*/
 
-  cout << "#[inspect] number of contigs = " << index.dbGraph.contigs.size() << endl;
+  cout << "#[inspect] number of contigs = " << index.dbGraph.size() << endl;
   
 
   unordered_map<int,int> echisto;
@@ -212,31 +223,31 @@ void InspectIndex(const KmerIndex& index, const ProgramOptions& opt) {
     }
   }
 
-  cout << "#[inspect] Number of k-mers in index = " << index.kmap.size() << endl;
+  cout << "#[inspect] Number of k-mers in index = " << index.dbGraph.nbKmers() << endl;
   unordered_map<int,int> kmhisto;
 
-  for (auto& kv : index.kmap) {
-    int id = kv.second.contig;
-    int pos = kv.second.getPos();
-    int fw = kv.second.isFw();
+  for (auto& kv : index.dbGraph) {
+    int id = kv.getData()->id;
+    int pos = kv.getData()->getPos();
+    int fw = kv.getData()->isFw();
 
-    if (id < 0 || id >= index.dbGraph.contigs.size()) {
-      cerr << "Kmer " << kv.first.toString() << " mapped to contig " << id << ", which is not in the de Bruijn Graph" << endl;
+    if (id < 0 || id >= index.dbGraph.size()) {
+      cerr << "Kmer " << kv.getData()->kmer.toString() << " mapped to contig " << id << ", which is not in the de Bruijn Graph" << endl;
       exit(1);
     } else {
-      ++kmhisto[index.ecmap[index.dbGraph.ecs[id]].size()];
+      ++kmhisto[index.ecmap[id].size()];
     }
 
     if (opt.inspect_thorough) {
-      const Contig& c = index.dbGraph.contigs[id];
-      const char* s = c.seq.c_str();
-      Kmer x = Kmer(s+pos);
-      Kmer xr = x.rep();
+      std::string seq = kv.referenceUnitigToString();
+      const char* s = seq.c_str();
+      Bifrost::Kmer x = Bifrost::Kmer(s + pos);
+      Bifrost::Kmer xr = x.rep();
 
-      bool bad = (fw != (x==xr)) || (xr != kv.first);
+      bool bad = (fw != (x==xr)) || (xr != kv.getData()->kmer);
       if (bad) {
-        cerr << "Kmer " << kv.first.toString() << " mapped to contig " << id << ", pos = " << pos << ", on " << (fw ? "forward" : "reverse") << " strand" << endl;
-        cerr << "seq = " << c.seq << endl;
+        cerr << "Kmer " << kv.getData()->kmer.toString() << " mapped to contig " << id << ", pos = " << pos << ", on " << (fw ? "forward" : "reverse") << " strand" << endl;
+        cerr << "seq = " << seq << endl;
         cerr << "x  = " << x.toString() << endl;
         cerr << "xr = " << xr.toString() << endl;
         exit(1);
@@ -245,30 +256,29 @@ void InspectIndex(const KmerIndex& index, const ProgramOptions& opt) {
   }
 
   if (opt.inspect_thorough) {
-    for (int i = 0; i < index.dbGraph.contigs.size(); i++) {
-      const Contig& c = index.dbGraph.contigs[i];
-
-      if (c.seq.size() != c.length + k-1) {
-        cerr << "Length and string dont match " << endl << "seq = " << c.seq << " (length = " << c.seq.size() << "), c.length = " << c.length << endl;
+    for (auto &kv : index.dbGraph) {
+      std::string seq = kv.referenceUnitigToString();
+      if (seq.size() != kv.len + k-1) {
+        cerr << "Length and string dont match " << endl << "seq = " << seq << " (length = " << seq.size() << "), c.length = " << kv.len << endl;
         exit(1);
       }
 
 
-      const char *s = c.seq.c_str();
-      KmerIterator kit(s), kit_end;
+      const char *s = seq.c_str();
+      Bifrost::KmerIterator kit(s), kit_end;
       for (; kit != kit_end; ++kit) {
-        Kmer x = kit->first;
-        Kmer xr = x.rep();
-        auto search = index.kmap.find(xr);
-        if (search == index.kmap.end()) {
-          cerr << "could not find kmer " << x.toString() << " in map " << endl << "seq = " << c.seq << ", pos = " << kit->second << endl;
+        Bifrost::Kmer x = kit->first;
+        Bifrost::Kmer xr = x.rep();
+        auto search = index.dbGraph.find(xr);
+        if (search.isEmpty) {
+          cerr << "could not find kmer " << x.toString() << " in map " << endl << "seq = " << seq << ", pos = " << kit->second << endl;
           exit(1);
         }
 
-        KmerEntry val = search->second;
-        if (val.contig != i /*|| val.ec != index.dbGraph.ecs[i]*/ || val.contig_length != c.length || val.getPos() != kit->second || val.isFw() != (x==xr)) {
-          cerr << "mismatch " << x.toString() << " in map " << endl << "id = " << i << ", ec = " << index.dbGraph.ecs[i] << ", length = " << c.length << ", seq = " << c.seq << ", pos = " << kit->second << endl;
-          cerr << "val = " << val.contig << /* ", ec = " << val.ec << */ ", length = " << val.contig_length << ", pos = (" << val.getPos() << ", " << (val.isFw() ? "forward" :  "reverse") << ")" << endl;
+        KmerEntry val = *search.getData();
+        if (val.id != kv.getData()->id /*|| val.ec != index.dbGraph.ecs[i]*/ || search.len != kv.len || val.getPos() != kit->second || val.isFw() != (x==xr)) {
+          cerr << "mismatch " << x.toString() << " in map " << endl << "id = " << kv.getData()->id << ", ec = " << vec_to_string(index.ecmap[kv.getData()->id]) << ", length = " << search.len << ", seq = " << search.referenceUnitigToString() << ", pos = " << kit->second << endl;
+          cerr << "val = " << val.id << /* ", ec = " << val.ec << */ ", length = " << val.length << ", pos = (" << val.getPos() << ", " << (val.isFw() ? "forward" :  "reverse") << ")" << endl;
           exit(1);
         }
       }
@@ -289,10 +299,10 @@ void InspectIndex(const KmerIndex& index, const ProgramOptions& opt) {
     out.open(gfa);
     out << "H\tVN:Z:1.0\n";
     int i = 0;
-    for (auto& c : index.dbGraph.contigs) {
-      out << "S\t" << i << "\t" << c.seq << "\tXT:S:";
-      for (int j = 0; j < c.transcripts.size(); j++) {
-        auto &ct = c.transcripts[j];
+    for (auto &kv : index.dbGraph) {
+      out << "S\t" << i << "\t" << kv.referenceUnitigToString() << "\tXT:S:";
+      for (int j = 0; j < kv.getData()->transcripts.size(); j++) {
+        auto &ct = kv.getData()->transcripts[j];
         if (j > 0) {
           out << ",";
         }
@@ -302,35 +312,34 @@ void InspectIndex(const KmerIndex& index, const ProgramOptions& opt) {
       i++;
     }
 
-    const auto& kmap = index.kmap;
     i = 0;
-    for (auto& c : index.dbGraph.contigs) {
-      auto& seq = c.seq;
+    for (auto& kv : index.dbGraph) {
+      auto seq = kv.referenceUnitigToString();
 
-      Kmer last(seq.c_str() + seq.size()-k);
+      Bifrost::Kmer last(seq.c_str() + seq.size() - k);
       for (int j = 0; j < 4; j++) {
-        Kmer after = last.forwardBase(Dna(j));
-        auto search = kmap.find(after.rep());
-        if (search != kmap.end()) {
-          KmerEntry val = search->second;
+        Bifrost::Kmer after = last.forwardBase(Dna(j));
+        auto search = index.dbGraph.find(after.rep());
+        if (!search.isEmpty) {
+          KmerEntry val = *search.getData();
           // check if + or -
           bool strand = val.isFw() == (after == after.rep());
-          out << "L\t" << i << "\t+\t" << val.contig
+          out << "L\t" << i << "\t+\t" << val.id
               << "\t" << (strand ? '+' : '-') << "\t" << (k-1) << "M\n";
         }
       }
 
       // enumerate bw links
-      Kmer first(seq.c_str());
+      Bifrost::Kmer first(seq.c_str());
       for (int j = 0; j < 4; j++) {
-        Kmer before = first.backwardBase(Dna(j));
-        auto search = kmap.find(before.rep());
-        if (search != kmap.end()) {
-          KmerEntry val = search->second;
+        Bifrost::Kmer before = first.backwardBase(Dna(j));
+        auto search = index.dbGraph.find(before.rep());
+        if (!search.isEmpty) {
+          KmerEntry val = *search.getData();
           // check if + or -
           bool strand = val.isFw() == (before == before.rep());
           out << "L\t" << i << "\t-\t"
-              << val.contig << "\t" << (strand ? '-' : '+')
+              << val.id << "\t" << (strand ? '-' : '+')
               << "\t" << (k-1) << "M\n";
         }
       }
@@ -365,14 +374,14 @@ void InspectIndex(const KmerIndex& index, const ProgramOptions& opt) {
     cmap.reserve(100);
     std::vector<std::unordered_map<int, std::vector<ECStruct>>> ec_chrom(index.ecmap.size());
 
-    for (const auto& c : index.dbGraph.contigs) {
+    for (const auto& kv : index.dbGraph) {
       cmap.clear();
       // structure for TRaln
       TranscriptAlignment tra;
       
-      int len = c.length;
-      int cid = c.id;
-      for (const auto& ct : c.transcripts) {
+      int len = kv.len;
+      int cid = kv.getData()->id;
+      for (const auto& ct : kv.getData()->transcripts) {
         // ct.trid, ct.pos, ct.sense
         model.translateTrPosition(ct.trid, ct.pos, len, ct.sense, tra);
         cmap[tra].push_back(ct.trid);
@@ -384,7 +393,7 @@ void InspectIndex(const KmerIndex& index, const ProgramOptions& opt) {
         if (tra.chr != -1) {          
           ECStruct ecs;
           ecs.chr = tra.chr;
-          ecs.ec = index.dbGraph.ecs[c.id];
+          ecs.ec = kv.getData()->id;
           ecs.start = tra.chrpos;
           int pos = 0;
           for (uint32_t cig : tra.cigar) {

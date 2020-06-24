@@ -2126,7 +2126,7 @@ void AlnProcessor::processBufferGenome() {
   
 
   Bifrost::Kmer km1,km2;
-  KmerEntry val1, val2;
+  EcDataPair val1, val2;
   if  (mp.opt.bus_mode) {
     paired = false;
   }
@@ -2303,22 +2303,21 @@ void AlnProcessor::processBufferGenome() {
 
 
         // everything maps to the same strand on all transcriptomes
-        auto strandednessInfo = [&](Bifrost::Kmer km, KmerEntry& val, const std::vector<std::pair<int,double>> &ua) -> std::pair<bool,bool> {          
+        auto strandednessInfo = [&](Bifrost::Kmer km, EcDataPair& val, const std::vector<std::pair<int,double>> &ua) -> std::pair<bool,bool> {          
           bool reptrue = (km == km.rep());
           auto search = index.dbGraph.find(km.rep());
           if (search.isEmpty) {
             return {false,reptrue};
           } else {
-            val = *search.getData();
-            if (val.contig == -1) {
+            val = { search, 0 };
+            if (val.first.getData()->id == -1) {
               return {false,reptrue};
             } else {
-              const Contig &c = index.dbGraph.contigs[val.contig];
-              if (c.transcripts.empty()) {
+              if (val.first.getData()->transcripts.empty()) {
                 return {false,reptrue};
               }
-              bool chrsense = model.transcripts[c.transcripts[0].trid].strand == c.transcripts[0].sense;
-              for (const auto & x : c.transcripts) {
+              bool chrsense = model.transcripts[val.first.getData()->transcripts[0].trid].strand == val.first.getData()->transcripts[0].sense;
+              for (const auto & x : val.first.getData()->transcripts) {
                 if ((model.transcripts[x.trid].strand == x.sense) != chrsense) {
                   for (const auto &y : ua) {
                     if (y.first == x.trid) {
@@ -2327,7 +2326,7 @@ void AlnProcessor::processBufferGenome() {
                   }
                 }
               }
-              return {true, chrsense == (reptrue == val.isFw())};
+              return {true, chrsense == (reptrue == val.first.getData()->isFw())};
             }
           }
         };
@@ -2361,7 +2360,8 @@ void AlnProcessor::processBufferGenome() {
           std::pair<int,bool> pos1, pos2;
 
           if (!pi.r1empty) {
-            pos1 = index.findPosition(t, km1, val1, pi.k1pos);
+            val1.second = pi.k1pos;
+            pos1 = index.findPosition(t, km1, val1);
             int trpos = (pos1.second) ? pos1.first-1 : pos1.first - rlen1;
             if (!model.translateTrPosition(t, trpos, rlen1, pos1.second, tra1)) {
               continue;
@@ -2370,8 +2370,9 @@ void AlnProcessor::processBufferGenome() {
           
           if (paired) {
             if (!pi.r2empty) {
-              pos2 = index.findPosition(t, km2, val2, pi.k2pos);
-              int trpos = (pos2.second) ? pos2.first-1 : pos2.first - rlen2;
+              val2.second = pi.k2pos;
+              pos2 = index.findPosition(t, km2, val2);
+              int trpos = (pos2.second) ? pos2.first - 1 : pos2.first - rlen2;
               if (!model.translateTrPosition(t, trpos, rlen2, pos2.second, tra2)) {
                 continue;
               }
