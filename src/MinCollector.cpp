@@ -380,7 +380,7 @@ bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<E
 
   
 
-  auto getPreSeq = [&](const char *s, Kmer km, bool fw, bool csense, EcDataPair dat) -> int {
+  auto getPreSeq = [&](const char *s, Bifrost::Kmer km, bool fw, bool csense, EcDataPair dat) -> int {
     const KmerEntry* val = dat.first.getData();
     if (s==0) {
       return -1;
@@ -414,8 +414,8 @@ bool MinCollector::countBias(const char *s1, const char *s2, const std::vector<E
     }
   }
 
-  Kmer km1 = Kmer((s1+p1));
-  bool fw1 = (km1==km1.rep());
+  Bifrost::Kmer km1 = Bifrost::Kmer(s1 + p1);
+  bool fw1 = (km1 == km1.rep());
   bool csense1 = (fw1 == val1.first.getData()->isFw()); // is this in the direction of the contig?
 
   int hex5 = getPreSeq(s1, km1, fw1, csense1, val1);

@@ -12,7 +12,6 @@
 
 
 #include "common.h"
-#include "Kmer.hpp"
 
 #include "hash.hpp"
 

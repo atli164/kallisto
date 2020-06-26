@@ -58,19 +58,17 @@ bool isSubset(const std::vector<int>& x, const std::vector<int>& y) {
 }
 
 
-int findFirstMappingKmer(const std::vector<EcDataPair> &v, KmerEntry &val) {
-  int p = -1;
+EcDataPair findFirstMappingKmer(const std::vector<EcDataPair> &v) {
+  EcDataPair ret;
   if (!v.empty()) {
-    val = *v[0].first.getData();
-    p = v[0].second;
+    ret = v[0];
     for (auto &x : v) {
-      if (x.second < p) {
-        val = *x.first.getData();
-        p = x.second;
+      if (x.second < ret.second) {
+        ret = x;
       }
     }
   }
-  return p;
+  return ret;
 }
 
 // constants
@@ -1102,11 +1100,11 @@ void ReadProcessor::processBuffer() {
       Bifrost::Kmer km;
 
       if (!v1.empty()) {
-        val.second = findFirstMappingKmer(v1, val.first);
+        val = findFirstMappingKmer(v1);
         km = Bifrost::Kmer(s1 + val.second);
       }
       if (!v2.empty()) {
-        val.second = findFirstMappingKmer(v2, val.first);
+        val = findFirstMappingKmer(v2);
         km = Bifrost::Kmer(s2 + val.second);
       }
 
@@ -1132,18 +1130,18 @@ void ReadProcessor::processBuffer() {
     }
     
     if (mp.opt.strand_specific && !u.empty()) {
-      int p = -1;
       Bifrost::Kmer km;
-      KmerEntry val;
+      EcDataPair val;
+      val.second = -1;
       if (!v1.empty()) {
         vtmp.clear();
         bool firstStrand = (mp.opt.strand == ProgramOptions::StrandType::FR); // FR have first read mapping forward
-        p = findFirstMappingKmer(v1,val);
-        km = Bifrost::Kmer((s1+p));
-        bool strand = (val.isFw() == (km == km.rep())); // k-mer maps to fw strand?
+        val = findFirstMappingKmer(v1);
+        km = Bifrost::Kmer(s1 + val.second);
+        bool strand = (val.first.getData()->isFw() == (km == km.rep())); // k-mer maps to fw strand?
         // might need to optimize this
         for (auto tr : u) {
-          for (auto ctx : val.transcripts) {
+          for (auto ctx : val.first.getData()->transcripts) {
             if (tr == ctx.trid) {
               if ((strand == ctx.sense) == firstStrand) {
                 // swap out 
@@ -1161,12 +1159,12 @@ void ReadProcessor::processBuffer() {
       if (!v2.empty()) {
         vtmp.clear();
         bool secondStrand = (mp.opt.strand == ProgramOptions::StrandType::RF);
-        p = findFirstMappingKmer(v2,val);
-        km = Bifrost::Kmer((s2+p));
-        bool strand = (val.isFw() == (km == km.rep())); // k-mer maps to fw strand?
+        val = findFirstMappingKmer(v2);
+        km = Bifrost::Kmer(s2 + val.second);
+        bool strand = (val.first.getData()->isFw() == (km == km.rep())); // k-mer maps to fw strand?
         // might need to optimize this
         for (auto tr : u) {
-          for (auto ctx : val.transcripts) {
+          for (auto ctx : val.first.getData()->transcripts) {
             if (tr == ctx.trid) {
               if ((strand == ctx.sense) == secondStrand) {
                 // swap out 
@@ -1232,10 +1230,17 @@ void ReadProcessor::processBuffer() {
       if (!u.empty()) {
         info.r1empty = v1.empty();
         info.r2empty = v2.empty();
-        KmerEntry val;
-        info.k1pos = (!info.r1empty) ? findFirstMappingKmer(v1,val) : -1;
-        info.k2pos = (!info.r2empty) ? findFirstMappingKmer(v2,val) : -1;
-        
+        EcDataPair val;
+
+        if(!info.r1empty) {
+            val = findFirstMappingKmer(v1);
+            info.k1pos = val.second;
+        } else info.k1pos = -1;
+
+        if(!info.r2empty) {
+            val = findFirstMappingKmer(v2);
+            info.k2pos = val.second;
+        } else info.k2pos = -1;
         
         if (ec != -1) {
           info.ec_id = ec;
@@ -1529,8 +1534,9 @@ void BUSProcessor::processBuffer() {
       info.UMI = stringToBinary(umi, umilen, f);
       if (!u.empty()) {
         info.r1empty = v.empty();
-        KmerEntry val;
-        info.k1pos = findFirstMappingKmer(v,val);
+        EcDataPair val;
+        val = findFirstMappingKmer(v);
+        info.k1pos = val.second;
         info.k2pos = -1;
                 
         if (ec != -1) {

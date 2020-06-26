@@ -34,7 +34,7 @@ void printTranscripts(const KmerIndex& index, std::stringstream& o, const std::s
 
   // find first mapping k-mer
   if (!v.empty()) {
-    val.second = findFirstMappingKmer(v, val.first);
+    val = findFirstMappingKmer(v);
     km = Bifrost::Kmer(s.c_str() + val.second);
   }
   
@@ -86,7 +86,7 @@ bool checkMapability(const KmerIndex& index, const std::string &s, const std::ve
   EcDataPair val;
 
   if (!v.empty()) {
-    val.second = findFirstMappingKmer(v,val.first);
+    val = findFirstMappingKmer(v);
     km = Bifrost::Kmer(s.c_str() + val.second);
   } else {
     return false;
