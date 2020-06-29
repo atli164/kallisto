@@ -16,7 +16,7 @@ add_executable(kallisto main.cpp)
 
 find_package( Threads REQUIRED )
 target_link_libraries(kallisto kallisto_core pthread ${CMAKE_CURRENT_SOURCE_DIR}/../ext/htslib/libhts.a)
-target_link_libraries(kallisto_core ${CMAKE_CURRENT_SOURCE_DIR}/../ext/bifrost/src/libbifrost.a)
+target_link_libraries(kallisto ${CMAKE_CURRENT_SOURCE_DIR}/../ext/bifrost/src/libbifrost.a)
 
 if(LINK MATCHES static)
     set(BUILD_SHARED_LIBS OFF)

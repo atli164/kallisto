@@ -16,7 +16,6 @@
 #include "common.h"
 #include "ProcessReads.h"
 #include "KmerIndex.h"
-#include "Kmer.hpp"
 #include "MinCollector.h"
 #include "EMAlgorithm.h"
 #include "weights.h"
@@ -1076,8 +1075,8 @@ bool CheckOptionsIndex(ProgramOptions& opt) {
 
   bool ret = true;
 
-  if (opt.k <= 1 || opt.k >= Kmer::MAX_K) {
-    cerr << "Error: invalid k-mer length " << opt.k << ", minimum is 3 and  maximum is " << (Kmer::MAX_K -1) << endl;
+  if (opt.k <= 1 || opt.k >= Bifrost::Kmer::MAX_K) {
+    cerr << "Error: invalid k-mer length " << opt.k << ", minimum is 3 and  maximum is " << (Bifrost::Kmer::MAX_K -1) << endl;
     ret = false;
   }
 
@@ -1735,7 +1734,7 @@ void usageIndex() {
        << "Required argument:" << endl
        << "-i, --index=STRING          Filename for the kallisto index to be constructed " << endl << endl
        << "Optional argument:" << endl
-       << "-k, --kmer-size=INT         k-mer (odd) length (default: 31, max value: " << (Kmer::MAX_K-1) << ")" << endl
+       << "-k, --kmer-size=INT         k-mer (odd) length (default: 31, max value: " << (Bifrost::Kmer::MAX_K-1) << ")" << endl
        << "    --make-unique           Replace repeated target names with unique names" << endl
        << endl;
 
@@ -1900,7 +1899,7 @@ int main(int argc, char *argv[]) {
         exit(1);
       } else {
         // create an index
-        Kmer::set_k(opt.k);
+        Bifrost::Kmer::set_k(opt.k);
         KmerIndex index(opt);
         index.BuildTranscripts(opt);
         index.write(opt.index);

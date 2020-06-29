@@ -11,6 +11,9 @@ if(USE_HDF5)
     add_compile_definitions("USE_HDF5=ON")
 endif(USE_HDF5)
 
+set(CC "/usr/bin/clang")
+set(CCX "/usr/bin/clang++")
+
 set(EXT_PROJECTS_DIR ${PROJECT_SOURCE_DIR}/ext)
 set(CMAKE_CXX_FLAGS_PROFILE "-g")
 
