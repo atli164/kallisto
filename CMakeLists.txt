@@ -22,9 +22,9 @@ set(CMAKE_CXX_FLAGS_PROFILE "-g")
 #
 #   CXXFLAGS = -O3 -DNDEBUG
 #
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release")
-endif()
+# if(NOT CMAKE_BUILD_TYPE)
+#    set(CMAKE_BUILD_TYPE "Release")
+# endif()
 
 if(${CMAKE_VERSION} VERSION_LESS 3.1)
     # CMake versions before 3.1 do not understand CMAKE_CXX_STANDARD
